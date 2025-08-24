@@ -1,6 +1,6 @@
 # ===== Builder Stage =====
 # Builder
-FROM arm32v7/debian:bookworm-slim AS builder
+FROM --platform=linux/arm/v7 alpine:3.18 AS builder
 
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2"
@@ -29,7 +29,7 @@ RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 RUN GOOS=linux GOARCH=arm go build -o zot ./cmd/zot
 
 # ===== Runtime Stage =====
-FROM arm32v7/debian:bookworm-slim
+FROM --platform=linux/arm/v7 alpine:3.18
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
