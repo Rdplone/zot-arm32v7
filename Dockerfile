@@ -1,5 +1,5 @@
 # ===== Builder Stage =====
-FROM arm32v7/alpine:latest AS builder
+FROM arm32v7/alpine:3.19 AS builder
 
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2"
@@ -27,7 +27,7 @@ RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 RUN GOOS=linux GOARCH=arm go build -o zot ./cmd/zot
 
 # ===== Runtime Stage =====
-FROM arm32v7/alpine:latest
+FROM arm32v7/alpine:3.19
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata wget
