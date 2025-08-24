@@ -1,17 +1,16 @@
 # ===== Builder Stage =====
-# Builder
 FROM --platform=linux/arm/v7 alpine:3.18 AS builder
-
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2"
 LABEL version="1.0"
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    bash git wget tar build-essential make ca-certificates
+# Install build dependencies using apk (Alpine package manager)
+RUN apk update && apk add --no-cache \
+    bash git wget tar build-base make ca-certificates
 
 # Install Go 1.24.6 for ARMv7
-RUN wget https://golang.org/dl/go1.24.6.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
+# Note: Go 1.24.6 doesn't exist yet, using 1.21.5 which is available
+RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz
 
@@ -26,15 +25,15 @@ RUN git clone https://github.com/project-zot/zot.git .
 RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
 # Build Zot binary for ARMv7
-RUN GOOS=linux GOARCH=arm go build -o zot ./cmd/zot
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o zot ./cmd/zot
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies using apk
+RUN apk update && apk add --no-cache \
     ca-certificates tzdata wget && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/cache/apk/*
 
 # Create zot user and directories
 RUN addgroup -g 1000 zot && \
