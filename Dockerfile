@@ -1,12 +1,14 @@
 # ===== Builder Stage =====
-FROM arm32v7/alpine:3.19 AS builder
+# Builder
+FROM arm32v7/debian:bookworm-slim AS builder
 
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2"
 LABEL version="1.0"
 
 # Install build dependencies
-RUN apk add --no-cache bash git wget tar build-base make
+RUN apt-get update && apt-get install -y \
+    bash git wget tar build-essential make ca-certificates
 
 # Install Go 1.24.6 for ARMv7
 RUN wget https://golang.org/dl/go1.24.6.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
@@ -27,10 +29,12 @@ RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 RUN GOOS=linux GOARCH=arm go build -o zot ./cmd/zot
 
 # ===== Runtime Stage =====
-FROM arm32v7/alpine:3.19
+FROM arm32v7/debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata wget
+RUN apt-get update && apt-get install -y \
+    ca-certificates tzdata wget && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create zot user and directories
 RUN addgroup -g 1000 zot && \
