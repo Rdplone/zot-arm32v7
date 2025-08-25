@@ -10,7 +10,7 @@ pipeline {
         stage('Install sshpass') {
             steps {
                 sh """
-                    if ! command -v sshpass &> /dev/null; then
+                    if ! command sshpass -V &> /dev/null; then
                         echo "sshpass not found, installing..."
                             apt-get update
                             apt-get install -y sshpass
