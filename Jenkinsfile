@@ -2,18 +2,18 @@ pipeline {
     agent any
 
     environment {
-        REMOTE_PATH = credentials('REMOTE_PATH')   // Jenkins Credentials üzerinden
-        REMOTE_HOST = credentials('REMOTE_HOST')   // Jenkins Credentials üzerinden
+        REMOTE_HOST = "$REMOTE_HOST"      // Sunucu IP veya domain
+        REMOTE_PATH = "$REMOTE_PATH"  // docker-compose.yml dizini
     }
 
     stages {
         stage('Deploy with Docker Compose') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'SSH_CREDENTIALS_ID',
-                                                 keyFileVariable: 'SSH_KEY',
-                                                 usernameVariable: 'SSH_USER')]) {
+                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
+                                                 usernameVariable: 'SSH_USER',
+                                                 passwordVariable: 'SSH_PASS')]) {
                     sh """
-                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_USER@$REMOTE_HOST '
+                        sshpass -p $SSH_PASS ssh -o StrictHostKeyChecking=no $SSH_USER@$REMOTE_HOST '
                             cd $REMOTE_PATH &&
                             docker-compose pull &&
                             docker-compose up -d
