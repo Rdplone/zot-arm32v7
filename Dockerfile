@@ -23,21 +23,18 @@ RUN git clone https://github.com/project-zot/zot.git .
 # Download dependencies
 RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
-# Build Zot binary with all extensions enabled
+# Build Zot binary with ALL extensions enabled
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
     go build -ldflags '-w -s' \
-    -tags 'binary_type_minimal,containers_image_openpgp' \
+    -tags 'search,metrics,scrub,ui,search,graphql,mtx,mgmt,vei,lint,metrics,scrub,search,ui,graphql,mtx,mgmt,vei,lint,containers_image_openpgp' \
     -o zot ./cmd/zot
-
-# Build with full feature set (alternative approach)
-# RUN make COMMIT=$(git describe --always --dirty) ARCH=arm OS=linux binary
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
 
 # Install runtime dependencies
 RUN apk update && apk add --no-cache \
-    ca-certificates tzdata wget curl && \
+    ca-certificates tzdata curl && \
     rm -rf /var/cache/apk/*
 
 # Create zot user and directories
@@ -50,7 +47,7 @@ RUN addgroup -g 1000 zot && \
 COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Create improved config with correct version
+# Create improved config with UI enabled
 RUN echo '{ \
   "distSpecVersion": "1.1.1", \
   "storage": { \
@@ -64,6 +61,17 @@ RUN echo '{ \
   }, \
   "log": { \
     "level": "info" \
+  }, \
+  "extensions": { \
+    "ui": { \
+      "enable": true \
+    }, \
+    "search": { \
+      "enable": true \
+    }, \
+    "metrics": { \
+      "enable": true \
+    } \
   } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
@@ -74,7 +82,7 @@ USER zot
 # Expose port
 EXPOSE 5000
 
-# Improved healthcheck
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5000/v2/ || exit 1
 
