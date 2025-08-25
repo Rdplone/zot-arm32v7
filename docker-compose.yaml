@@ -1,7 +1,7 @@
 services:
 
   zot:
-    image: zot-arm32v7:latest
+    image: rdplone/zot-arm32v7:latest
     container_name: zot
     restart: always
     ports:
