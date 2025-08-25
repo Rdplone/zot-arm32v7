@@ -1,0 +1,10 @@
+services:
+
+  zot:
+    image: zot-arm32v7:latest
+    container_name: zot
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/var/lib/zot
