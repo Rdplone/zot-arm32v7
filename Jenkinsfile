@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        COMPOSE_FILE = 'docker-compose.yml'
+        COMPOSE_FILE = 'docker-compose.yaml'
     }
 
     stages {
@@ -25,7 +25,7 @@ pipeline {
                         # Remote dizini oluştur
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "mkdir -p \$REMOTE_PATH"
 
-                        # docker-compose.yml dosyasını kopyala
+                        # docker-compose.yaml dosyasını kopyala
                         sshpass -p \$SSH_PASS scp -o StrictHostKeyChecking=no \$COMPOSE_FILE \$SSH_USER@\$HOST_IP:\$REMOTE_PATH/
 
                         # Remote host üzerinde deploy
