@@ -55,9 +55,11 @@ pipeline {
                             """
                         }
                     }
+                sh """
                     echo "SSH_USER: ${SSH_USER}"
                     echo "HOST_IP: ${HOST_IP}"
                     echo "REMOTE_PATH: ${REMOTE_PATH}"
+                """
             }
         }
     }
