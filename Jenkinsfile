@@ -1,19 +1,15 @@
 pipeline {
     agent any
-
+    
     environment {
         COMPOSE_FILE = 'docker-compose.yaml'
-        GIT_REPO = 'https://github.com/Rdplone/zot-arm32v7'
-        GIT_BRANCH = 'main'
     }
-
+    
     stages {
         stage('Deploy to Remote Host') {
             steps {
                 withCredentials([
-                    usernamePassword(credentialsId: 'ssh-remote-server',
-                                     usernameVariable: 'SSH_USER',
-                                     passwordVariable: 'SSH_PASS'),
+                    usernamePassword(credentialsId: 'ssh-remote-server', usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS'),
                     string(credentialsId: 'remote-host-ip', variable: 'HOST_IP'),
                     string(credentialsId: 'remote-path', variable: 'REMOTE_PATH')
                 ]) {
@@ -21,48 +17,48 @@ pipeline {
                         echo ">>> 🚀 Deploy başlıyor..."
                         echo "Remote host: \$HOST_IP"
                         echo "Remote path: \$REMOTE_PATH"
-
+                        pwd
+                        ls
+                        
                         # Remote dizini oluştur
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "mkdir -p \$REMOTE_PATH"
-
-                        # Eğer eski docker-compose.yaml varsa önce servisleri durdur ve temizle
+                        
+                        # Eğer remote host'ta docker-compose.yaml varsa temizlik yap
+                        echo ">>> 🧹 Mevcut deployment kontrolü ve temizlik..."
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "
                             cd \$REMOTE_PATH
                             if [ -f docker-compose.yaml ]; then
-                                echo 'Eski docker-compose.yaml bulundu. Servisler durduruluyor...'
+                                echo 'Mevcut docker-compose.yaml bulundu, containers durduruluyor...'
                                 docker compose down || true
-
-                                echo 'Docker objeleri temizleniyor...'
+                                echo 'Docker sistem temizliği yapılıyor...'
                                 docker system prune -af --volumes || true
-
                                 echo 'Eski docker-compose.yaml siliniyor...'
                                 rm -f docker-compose.yaml
+                                echo 'Temizlik tamamlandı.'
                             else
-                                echo 'docker-compose.yaml bulunamadı. GitHub\'dan çekilecek.'
+                                echo 'Mevcut docker-compose.yaml bulunamadı, temizlik atlanıyor.'
                             fi
                         "
-
-                        # Eğer COMPOSE_FILE Jenkins workspace'te yoksa GitHub'dan indir
-                        if [ ! -f \$COMPOSE_FILE ]; then
-                            echo 'docker-compose.yaml Jenkins workspace\'te bulunamadı. GitHub\'dan indiriliyor...'
-                            curl -fsSL \$GIT_REPO/raw/\$GIT_BRANCH/\$COMPOSE_FILE -o \$COMPOSE_FILE
-                        fi
-
+                        
                         # Yeni docker-compose.yaml dosyasını kopyala
+                        echo ">>> 📋 Yeni docker-compose.yaml kopyalanıyor..."
                         sshpass -p \$SSH_PASS scp -o StrictHostKeyChecking=no \$COMPOSE_FILE \$SSH_USER@\$HOST_IP:\$REMOTE_PATH/
-
-                        # Remote host üzerinde deploy
+                        
+                        # Remote host üzerinde yeni deployment
+                        echo ">>> 🚀 Yeni deployment başlatılıyor..."
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "
                             cd \$REMOTE_PATH
                             docker compose pull
                             docker compose up -d
                         "
+                        
+                        echo ">>> ✅ Deploy işlemi tamamlandı!"
                     """
                 }
             }
         }
     }
-
+    
     post {
         success {
             echo "✅ Deployment başarılı!"
