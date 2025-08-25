@@ -16,18 +16,22 @@ RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz &&
 ENV PATH="/usr/local/go/bin:${PATH}"
 RUN go version
 
-# Clone Zot repository
+# Clone Zot repository (use specific tag for stability)
 WORKDIR /build
-RUN git clone https://github.com/project-zot/zot.git .
+RUN git clone https://github.com/project-zot/zot.git . && \
+    git checkout v2.0.0-rc5  # Use a stable release tag
 
 # Download dependencies
 RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
-# Build Zot binary with ALL extensions enabled
+# Build Zot binary with proper tags - SIMPLIFIED approach
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
     go build -ldflags '-w -s' \
-    -tags 'search,metrics,scrub,ui,search,graphql,mtx,mgmt,vei,lint,metrics,scrub,search,ui,graphql,mtx,mgmt,vei,lint,containers_image_openpgp' \
+    -tags 'containers_image_openpgp' \
     -o zot ./cmd/zot
+
+# Alternative: Use the Makefile approach (recommended)
+# RUN make COMMIT=$(git describe --always --dirty) ARCH=arm OS=linux binary-minimal
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
@@ -47,7 +51,7 @@ RUN addgroup -g 1000 zot && \
 COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Create improved config with UI enabled
+# Create basic config
 RUN echo '{ \
   "distSpecVersion": "1.1.1", \
   "storage": { \
@@ -61,17 +65,6 @@ RUN echo '{ \
   }, \
   "log": { \
     "level": "info" \
-  }, \
-  "extensions": { \
-    "ui": { \
-      "enable": true \
-    }, \
-    "search": { \
-      "enable": true \
-    }, \
-    "metrics": { \
-      "enable": true \
-    } \
   } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
