@@ -7,6 +7,20 @@ pipeline {
     }
     
     stages {
+        stage('Install sshpass') {
+            steps {
+                sh """
+                    if ! command -v sshpass &> /dev/null; then
+                        echo "sshpass not found, installing..."
+                        sudo apt-get update
+                        sudo apt-get install -y sshpass
+                    else
+                        echo "sshpass already installed"
+                    fi
+                """
+            }
+        }
+
         stage('Checkout') {
             steps {
                 git branch: 'main', url: "${env.GIT_REPO}"
@@ -15,7 +29,6 @@ pipeline {
         
         stage('Deploy to Remote Host') {
             steps {
-                // SSH_USER + SSH_PASS ve REMOTE_PATH + HOST_IP credentialları
                 withCredentials([
                     usernamePassword(credentialsId: 'ssh-remote-server',
                                      usernameVariable: 'SSH_USER',
@@ -24,13 +37,13 @@ pipeline {
                     string(credentialsId: 'remote-path', variable: 'REMOTE_PATH')
                 ]) {
                     script {
-                        // Remote dizini oluştur (varsa değiştirmez)
                         sh """
+                            # Remote dizini oluştur
                             sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP '
                                 mkdir -p \$REMOTE_PATH
                             '
                             
-                            # GitHub'dan çekilen docker-compose.yml dosyasını remote'a kopyala
+                            # docker-compose.yml dosyasını remote'a kopyala
                             sshpass -p \$SSH_PASS scp -o StrictHostKeyChecking=no ${COMPOSE_FILE} \$SSH_USER@\$HOST_IP:\$REMOTE_PATH/
                             
                             # Remote host üzerinde deploy
