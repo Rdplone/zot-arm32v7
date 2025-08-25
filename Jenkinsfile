@@ -29,7 +29,6 @@ pipeline {
         
         stage('Deploy to Remote Host') {
             steps {
-                step{
                     withCredentials([
                         usernamePassword(credentialsId: 'ssh-remote-server',
                                          usernameVariable: 'SSH_USER',
@@ -56,12 +55,9 @@ pipeline {
                             """
                         }
                     }
-                }
-                step{
-                    'echo "$SSH_USER"'
-                    'echo "$HOST_IP"'
-                    'echo "$REMOTE_PATH"'
-                }
+                    echo "SSH_USER: ${SSH_USER}"
+                    echo "HOST_IP: ${HOST_IP}"
+                    echo "REMOTE_PATH: ${REMOTE_PATH}"
             }
         }
     }
