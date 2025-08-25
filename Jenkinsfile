@@ -2,89 +2,52 @@ pipeline {
     agent any
     
     environment {
-        REMOTE_HOST = "$REMOTE_HOST"       // Remote server IP
-        REMOTE_PATH = "$REMOTE_PATH"          // Hedef dizin
+        GIT_REPO = "https://github.com/Rdplone/zot-arm32v7.git"
+        COMPOSE_FILE = "docker-compose.yml"
     }
     
     stages {
-        stage('🔗 Test SSH Connection') {
+        stage('Checkout') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
-                        \$SSH_USER@\$REMOTE_HOST \
-                        'echo "SSH connection successful - Current directory: \$(pwd)"'
-                    """
-                }
+                git branch: 'main', url: "${env.GIT_REPO}"
             }
         }
         
-        stage('📁 Create Directory') {
+        stage('Deploy to Remote Host') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
-                        \$SSH_USER@\$REMOTE_HOST \
-                        'mkdir -p \$REMOTE_PATH && echo "Directory created: \$REMOTE_PATH"'
-                    """
-                }
-            }
-        }
-        
-        stage('📝 Create Test File') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
-                        \$SSH_USER@\$REMOTE_HOST '
-                            cd \$REMOTE_PATH
-                            echo "Jenkins deployment test" > test-file.txt
-                            echo "Created at: \$(date)" >> test-file.txt
-                            echo "Build number: ${BUILD_NUMBER}" >> test-file.txt
+                // SSH_USER + SSH_PASS ve REMOTE_PATH + HOST_IP credentialları
+                withCredentials([
+                    usernamePassword(credentialsId: 'ssh-remote-server',
+                                     usernameVariable: 'SSH_USER',
+                                     passwordVariable: 'SSH_PASS'),
+                    string(credentialsId: 'remote-host-ip', variable: 'HOST_IP'),
+                    string(credentialsId: 'remote-path', variable: 'REMOTE_PATH')
+                ]) {
+                    script {
+                        // Remote dizini oluştur (varsa değiştirmez)
+                        sh """
+                            sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP '
+                                mkdir -p \$REMOTE_PATH
+                            '
                             
-                            echo "File created successfully:"
-                            cat test-file.txt
-                        '
-                    """
-                }
-            }
-        }
-        
-        stage('✅ Verify Results') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
-                        \$SSH_USER@\$REMOTE_HOST '
-                            cd \$REMOTE_PATH
+                            # GitHub'dan çekilen docker-compose.yml dosyasını remote'a kopyala
+                            sshpass -p \$SSH_PASS scp -o StrictHostKeyChecking=no ${COMPOSE_FILE} \$SSH_USER@\$HOST_IP:\$REMOTE_PATH/
                             
-                            echo "Directory contents:"
-                            ls -la
-                            
-                            echo ""
-                            echo "File content:"
-                            cat test-file.txt
-                        '
-                    """
+                            # Remote host üzerinde deploy
+                            sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP '
+                                cd \$REMOTE_PATH
+                                docker-compose pull
+                                docker-compose up -d
+                            '
+                        """
+                    }
                 }
             }
         }
     }
     
     post {
-        success {
-            echo "✅ SSH connection and file creation successful!"
-        }
-        failure {
-            echo "❌ Something went wrong!"
-        }
+        success { echo "✅ Deployment completed successfully!" }
+        failure { echo "❌ Deployment failed!" }
     }
 }
