@@ -12,8 +12,8 @@ pipeline {
                 sh """
                     if ! command -v sshpass &> /dev/null; then
                         echo "sshpass not found, installing..."
-                        sudo apt-get update
-                        sudo apt-get install -y sshpass
+                            apt-get update
+                            apt-get install -y sshpass
                     else
                         echo "sshpass already installed"
                     fi
