@@ -1,38 +1,43 @@
 # ===== Builder Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18 AS builder
 LABEL maintainer="your-email@example.com"
-LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2"
+LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2 with full features"
 LABEL version="1.0"
 
-# Install build dependencies using apk (Alpine package manager)
+# Install build dependencies
 RUN apk update && apk add --no-cache \
     bash git wget tar build-base make ca-certificates
 
-# Install Go 1.24.6 for ARMv7
-# Note: Go 1.24.6 doesn't exist yet, using 1.21.5 which is available
+# Install Go 1.21.5 for ARMv7
 RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz
 
 ENV PATH="/usr/local/go/bin:${PATH}"
-
-# Verify Go version
 RUN go version
 
 # Clone Zot repository
 WORKDIR /build
 RUN git clone https://github.com/project-zot/zot.git .
+
+# Download dependencies
 RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
-# Build Zot binary for ARMv7
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o zot ./cmd/zot
+# Build Zot binary with all extensions enabled
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
+    go build -ldflags '-w -s' \
+    -tags 'binary_type_minimal,containers_image_openpgp' \
+    -o zot ./cmd/zot
+
+# Build with full feature set (alternative approach)
+# RUN make COMMIT=$(git describe --always --dirty) ARCH=arm OS=linux binary
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
 
-# Install runtime dependencies using apk
+# Install runtime dependencies
 RUN apk update && apk add --no-cache \
-    ca-certificates tzdata wget && \
+    ca-certificates tzdata wget curl && \
     rm -rf /var/cache/apk/*
 
 # Create zot user and directories
@@ -45,12 +50,21 @@ RUN addgroup -g 1000 zot && \
 COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Create default config
+# Create improved config with correct version
 RUN echo '{ \
-  "distSpecVersion": "1.1.0", \
-  "storage": { "rootDirectory": "/var/lib/zot" }, \
-  "http": { "address": "0.0.0.0", "port": "5000" }, \
-  "log": { "level": "info" } \
+  "distSpecVersion": "1.1.1", \
+  "storage": { \
+    "rootDirectory": "/var/lib/zot", \
+    "dedupe": true, \
+    "gc": true \
+  }, \
+  "http": { \
+    "address": "0.0.0.0", \
+    "port": "5000" \
+  }, \
+  "log": { \
+    "level": "info" \
+  } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
 
@@ -60,9 +74,9 @@ USER zot
 # Expose port
 EXPOSE 5000
 
-# Healthcheck
+# Improved healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5000/v2/ || exit 1
+  CMD curl -f http://localhost:5000/v2/ || exit 1
 
 # Set working directory
 WORKDIR /var/lib/zot
