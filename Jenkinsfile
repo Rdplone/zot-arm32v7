@@ -2,92 +2,76 @@ pipeline {
     agent any
     
     environment {
-        REMOTE_HOST = "$REMOTE_HOST"          // Remote server IP / hostname
-        REMOTE_PATH = "$REMOTE_PATH"      // Remote docker-compose dizini
-        DOCKER_IMAGE = "rdplone/zot-arm32v7:latest" // Docker Hub imajı
-        COMPOSE_FILE = "docker-compose.yaml"
+        REMOTE_HOST = "$REMOTE_HOST"       // Remote server IP
+        REMOTE_PATH = "$REMOTE_PATH"          // Hedef dizin
     }
     
     stages {
-        stage('🔗 Connect to Remote Host') {
+        stage('🔗 Test SSH Connection') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
                                                  usernameVariable: 'SSH_USER',
                                                  passwordVariable: 'SSH_PASS')]) {
                     sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$REMOTE_HOST 'echo "SSH connection successful"'
+                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
+                        \$SSH_USER@\$REMOTE_HOST \
+                        'echo "SSH connection successful - Current directory: \$(pwd)"'
                     """
                 }
             }
         }
         
-        stage('📁 Setup Remote Directory') {
+        stage('📁 Create Directory') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
                                                  usernameVariable: 'SSH_USER',
                                                  passwordVariable: 'SSH_PASS')]) {
                     sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$REMOTE_HOST '
-                            mkdir -p \$REMOTE_PATH
+                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
+                        \$SSH_USER@\$REMOTE_HOST \
+                        'mkdir -p \$REMOTE_PATH && echo "Directory created: \$REMOTE_PATH"'
+                    """
+                }
+            }
+        }
+        
+        stage('📝 Create Test File') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
+                                                 usernameVariable: 'SSH_USER',
+                                                 passwordVariable: 'SSH_PASS')]) {
+                    sh """
+                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
+                        \$SSH_USER@\$REMOTE_HOST '
+                            cd \$REMOTE_PATH
+                            echo "Jenkins deployment test" > test-file.txt
+                            echo "Created at: \$(date)" >> test-file.txt
+                            echo "Build number: ${BUILD_NUMBER}" >> test-file.txt
+                            
+                            echo "File created successfully:"
+                            cat test-file.txt
                         '
                     """
                 }
             }
         }
         
-        stage('📥 Copy Docker Compose File') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    script {
-                        // GitHub'dan docker-compose.yaml dosyasını al
-                        def repoUrl = 'https://github.com/Rdplone/zot-arm32v7.git'
-                        def rawUrl = repoUrl.replace('.git','').replace('github.com','raw.githubusercontent.com') + '/main/' + env.COMPOSE_FILE
-                        
-                        echo "Downloading docker-compose.yaml from: ${rawUrl}"
-                        
-                        sh """
-                            curl -fsSL '${rawUrl}' -o docker-compose.yaml
-                            sshpass -p \$SSH_PASS scp -o StrictHostKeyChecking=no docker-compose.yaml \$SSH_USER@\$REMOTE_HOST:\$REMOTE_PATH/
-                            rm -f docker-compose.yaml
-                        """
-                    }
-                }
-            }
-        }
-        
-        stage('🛑 Stop and Clean') {
+        stage('✅ Verify Results') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
                                                  usernameVariable: 'SSH_USER',
                                                  passwordVariable: 'SSH_PASS')]) {
                     sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$REMOTE_HOST '
+                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \
+                        \$SSH_USER@\$REMOTE_HOST '
                             cd \$REMOTE_PATH
-                            docker-compose down || true
-                            docker system prune -f
-                            echo "Services stopped and system cleaned"
-                        '
-                    """
-                }
-            }
-        }
-        
-        stage('🚀 Deploy New Version') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'remote-server-ssh-pass',
-                                                 usernameVariable: 'SSH_USER',
-                                                 passwordVariable: 'SSH_PASS')]) {
-                    sh """
-                        sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$REMOTE_HOST '
-                            cd \$REMOTE_PATH
-                            sed -i "s|image:.*|image: \$DOCKER_IMAGE|" docker-compose.yaml
-                            docker-compose pull
-                            docker-compose up -d
-                            sleep 5
-                            docker-compose ps
-                            echo "Deployment completed successfully"
+                            
+                            echo "Directory contents:"
+                            ls -la
+                            
+                            echo ""
+                            echo "File content:"
+                            cat test-file.txt
                         '
                     """
                 }
@@ -97,10 +81,10 @@ pipeline {
     
     post {
         success {
-            echo "✅ Deployment successful!"
+            echo "✅ SSH connection and file creation successful!"
         }
         failure {
-            echo "❌ Deployment failed!"
+            echo "❌ Something went wrong!"
         }
     }
 }
