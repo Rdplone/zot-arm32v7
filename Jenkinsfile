@@ -7,7 +7,7 @@ pipeline {
     }
     
     stages {
-        stage('Install sshpass') {
+        /*stage('Install sshpass') {
             steps {
                 sh """
                     if ! command sshpass -V &> /dev/null; then
@@ -19,7 +19,7 @@ pipeline {
                     fi
                 """
             }
-        }
+        }*/
 
         stage('Checkout') {
             steps {
