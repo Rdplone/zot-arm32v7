@@ -31,8 +31,8 @@ pipeline {
                         # Remote host üzerinde deploy
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "
                             cd \$REMOTE_PATH
-                            docker-compose pull
-                            docker-compose up -d
+                            docker compose pull
+                            docker compose up -d
                         "
                     """
                 }
