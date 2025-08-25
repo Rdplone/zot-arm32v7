@@ -20,6 +20,7 @@ pipeline {
                         echo "Remote host: \$HOST_IP"
                         echo "Remote path: \$REMOTE_PATH"
                         pwd
+                        ls
 
                         # Remote dizini oluştur
                         sshpass -p \$SSH_PASS ssh -o StrictHostKeyChecking=no \$SSH_USER@\$HOST_IP "mkdir -p \$REMOTE_PATH"
