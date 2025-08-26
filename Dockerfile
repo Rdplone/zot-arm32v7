@@ -1,6 +1,6 @@
 # ===== Builder Stage =====
 # Using the official Zot Go builder image, which includes all necessary tools
-FROM --platform=linux/arm/v7 ghcr.io/project-zot/golang:1.21 AS builder
+FROM --platform=linux/arm/v7 golang:1.21-alpine AS builder
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2 with full features"
 LABEL version="1.0"
