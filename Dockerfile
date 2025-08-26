@@ -8,6 +8,9 @@ LABEL version="1.0"
 RUN apk update && apk add --no-cache \
     bash git wget tar build-base make ca-certificates
 
+# Fix dependency version for containers/image
+RUN go get github.com/containers/image/v5@v5.29.1
+
 # Install Go 1.21.5 for ARMv7
 RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
