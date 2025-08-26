@@ -1,4 +1,4 @@
-# Zot Registry for ARM32v7/Raspberry Pi 2
+# Zot Registry for ARM32v7/Raspberry Pi 2 [NOT SUPPORTED]
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/rdplone/zot-arm32v7)](https://hub.docker.com/r/rdplone/zot-arm32v7)
 [![Docker Image Size](https://img.shields.io/docker/image-size/rdplone/zot-arm32v7/latest)](https://hub.docker.com/r/rdplone/zot-arm32v7)
