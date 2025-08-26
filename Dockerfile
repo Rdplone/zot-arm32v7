@@ -1,28 +1,37 @@
 # ===== Builder Stage =====
-FROM --platform=linux/arm/v7 golang:1.21-alpine AS builder
+FROM --platform=linux/arm/v7 alpine:3.18 AS builder
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2 with full features"
 LABEL version="1.0"
 
 # Install build dependencies
 RUN apk update && apk add --no-cache \
-    bash git wget tar build-base make ca-certificates nodejs npm
+    bash git wget tar build-base make ca-certificates
 
-# Clone Zot repository
-WORKDIR /go/src/github.com/project-zot/zot
+# Install Go 1.21.5 for ARMv7
+RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+RUN go version
+
+# Clone Zot repository (use specific tag for stability)
+WORKDIR /build
 RUN git clone https://github.com/project-zot/zot.git . && \
-    git checkout v2.1.7
+    git checkout v2.1.7  # Use a stable release tag
 
-# Build UI assets
-WORKDIR /go/src/github.com/project-zot/zot/web
-RUN npm install && npm run build
+# Download dependencies
+RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
-# Go build (UI and Search enabled)
-WORKDIR /go/src/github.com/project-zot/zot
+# Build Zot binary with proper tags - SIMPLIFIED approach
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
     go build -ldflags '-w -s' \
-    -tags 'containers_image_openpgp ui search' \
+    -tags 'containers_image_openpgp' \
     -o zot ./cmd/zot
+
+# Alternative: Use the Makefile approach (recommended)
+# RUN make COMMIT=$(git describe --always --dirty) ARCH=arm OS=linux binary-minimal
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
@@ -39,18 +48,16 @@ RUN addgroup -g 1000 zot && \
     chown -R zot:zot /etc/zot /var/lib/zot
 
 # Copy built binary from builder
-COPY --from=builder /go/src/github.com/project-zot/zot/zot /usr/local/bin/zot
+COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Create config WITH UI AND SEARCH ENABLED
+# Create basic config
 RUN echo '{ \
   "distSpecVersion": "1.1.1", \
   "storage": { \
     "rootDirectory": "/var/lib/zot", \
     "dedupe": true, \
-    "gc": true, \
-    "gcDelay": "1h", \
-    "gcInterval": "24h" \
+    "gc": true \
   }, \
   "http": { \
     "address": "0.0.0.0", \
@@ -58,14 +65,6 @@ RUN echo '{ \
   }, \
   "log": { \
     "level": "info" \
-  }, \
-  "extensions": { \
-    "ui": { \
-      "enable": true \
-    }, \
-    "search": { \
-      "enable": true \
-    } \
   } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
