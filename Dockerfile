@@ -31,18 +31,17 @@ RUN echo "Building Zot version: $ZOT_VERSION" && \
 #     echo "Building Zot version: $LATEST_VERSION" && \
 #     git clone --depth 1 --branch $LATEST_VERSION https://github.com/project-zot/zot.git .
 
-# Clean go mod cache and download dependencies with retries
-RUN go clean -modcache || true
+# Download dependencies step by step
+RUN echo "Cleaning module cache..." && go clean -modcache
 
-# Download dependencies with better error handling
-RUN set -e && \
-    echo "Downloading Go modules..." && \
-    timeout 600 go mod download -x || \
-    (echo "First attempt failed, cleaning and retrying..." && \
-     go clean -modcache && \
-     timeout 600 go mod download -x) || \
-    (echo "Second attempt failed, trying with different proxy..." && \
-     GOPROXY=https://goproxy.cn,direct timeout 600 go mod download -x)
+RUN echo "Downloading Go modules (attempt 1)..." && \
+    go mod download || echo "First download attempt failed"
+
+RUN echo "Trying with alternative proxy..." && \
+    GOPROXY=https://goproxy.cn,direct go mod download || echo "Second download attempt failed"
+
+RUN echo "Final download attempt with direct..." && \
+    GOPROXY=direct go mod download
 
 # Verify dependencies
 RUN go mod verify
