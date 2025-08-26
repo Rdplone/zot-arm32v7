@@ -8,8 +8,8 @@ LABEL version="1.0"
 RUN apk update && apk add --no-cache \
     bash git wget tar build-base make ca-certificates
 
-# Install Go 1.24.4 for ARMv7
-RUN wget https://golang.org/dl/go1.24.4.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
+# Install Go 1.21.5 for ARMv7
+RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm /tmp/go.tar.gz
 
