@@ -1,54 +1,34 @@
-# Alternative approach - use official binary if available
-FROM --platform=linux/arm/v7 alpine:3.18 AS download
-
-# Install curl and jq for downloading
-RUN apk add --no-cache curl jq
-
-WORKDIR /tmp
-
-# Try to download pre-built binary first
-RUN curl -s https://api.github.com/repos/project-zot/zot/releases/latest > latest.json && \
-    VERSION=$(jq -r '.tag_name' latest.json) && \
-    echo "Latest version: $VERSION" && \
-    curl -L "https://github.com/project-zot/zot/releases/download/$VERSION/zot-linux-arm-minimal" -o zot-arm || \
-    echo "Pre-built ARM binary not available, will build from source"
-
-# Check if we got a binary
-RUN if [ -f zot-arm ]; then \
-        chmod +x zot-arm && \
-        file zot-arm && \
-        echo "Downloaded pre-built binary"; \
-    else \
-        echo "No pre-built binary available"; \
-    fi
-
-# ===== Builder Stage (fallback if no pre-built binary) =====
+# ===== Builder Stage =====
 FROM --platform=linux/amd64 golang:1.21-alpine3.18 AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates build-base
 
-# Set simple environment
+# Set environment
 ENV CGO_ENABLED=0
 ENV GO111MODULE=on
+ENV GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src
 
 # Clone a known stable version
 RUN git clone --depth 1 --branch v2.1.7 https://github.com/project-zot/zot.git .
 
-# Simple dependency download
-RUN go mod tidy
-RUN go mod download
+# Download dependencies
+RUN go mod tidy && go mod download
 
-# Build minimal version (without UI/search for reliability)
+# Build for ARM32v7 with minimal features
 RUN GOOS=linux GOARCH=arm GOARM=7 \
     go build -ldflags '-w -s' \
     -o zot ./cmd/zot
 
+# Verify build succeeded
+RUN ls -la zot
+
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
 
+# Install runtime dependencies
 RUN apk add --no-cache ca-certificates curl
 
 # Create user and directories
@@ -57,31 +37,20 @@ RUN addgroup -g 1000 zot && \
     mkdir -p /etc/zot /var/lib/zot && \
     chown -R zot:zot /etc/zot /var/lib/zot
 
-# Copy binary (prefer downloaded, fallback to built)
-COPY --from=download /tmp/zot-arm* /tmp/ || true
-COPY --from=builder /src/zot /tmp/zot-built || true
+# Copy binary from builder
+COPY --from=builder /src/zot /usr/local/bin/zot
+RUN chmod +x /usr/local/bin/zot
 
-# Install the binary
-RUN if [ -f /tmp/zot-arm ]; then \
-        cp /tmp/zot-arm /usr/local/bin/zot; \
-        echo "Using downloaded binary"; \
-    elif [ -f /tmp/zot-built ]; then \
-        cp /tmp/zot-built /usr/local/bin/zot; \
-        echo "Using built binary"; \
-    else \
-        echo "No binary available" && exit 1; \
-    fi && \
-    chmod +x /usr/local/bin/zot
-
-# Test binary
-RUN /usr/local/bin/zot --help
+# Test binary works
+RUN /usr/local/bin/zot --help > /dev/null
 
 # Create minimal config
 RUN echo '{ \
   "distSpecVersion": "1.1.0-dev", \
   "storage": { \
     "rootDirectory": "/var/lib/zot", \
-    "gc": true \
+    "gc": true, \
+    "dedupe": false \
   }, \
   "http": { \
     "address": "0.0.0.0", \
