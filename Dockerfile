@@ -6,7 +6,7 @@ LABEL version="1.0"
 
 # Install build dependencies
 RUN apk update && apk add --no-cache \
-    bash git wget tar build-base make ca-certificates
+    bash git wget tar build-base make ca-certificates curl jq
 
 # Install Go 1.21.5 for ARMv7
 RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz && \
@@ -16,22 +16,24 @@ RUN wget https://golang.org/dl/go1.21.5.linux-armv6l.tar.gz -O /tmp/go.tar.gz &&
 ENV PATH="/usr/local/go/bin:${PATH}"
 RUN go version
 
-# Clone Zot repository (use specific tag for stability)
+# Get latest stable release version from GitHub API (v2.1.7 as of now)
 WORKDIR /build
-RUN git clone https://github.com/project-zot/zot.git . && \
-    git checkout v2.0.0-rc5  # Use a stable release tag
+RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/project-zot/zot/releases/latest | jq -r '.tag_name') && \
+    echo "Building Zot version: $LATEST_VERSION" && \
+    git clone --depth 1 --branch $LATEST_VERSION https://github.com/project-zot/zot.git .
+
+# Alternative: Manual version specification for more control
+# ARG ZOT_VERSION=v2.1.5
+# RUN git clone --depth 1 --branch ${ZOT_VERSION} https://github.com/project-zot/zot.git .
 
 # Download dependencies
 RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
 
-# Build Zot binary with proper tags - SIMPLIFIED approach
+# Build with full features including UI and search
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
     go build -ldflags '-w -s' \
-    -tags 'containers_image_openpgp' \
+    -tags 'containers_image_openpgp ui search' \
     -o zot ./cmd/zot
-
-# Alternative: Use the Makefile approach (recommended)
-# RUN make COMMIT=$(git describe --always --dirty) ARCH=arm OS=linux binary-minimal
 
 # ===== Runtime Stage =====
 FROM --platform=linux/arm/v7 alpine:3.18
@@ -51,7 +53,7 @@ RUN addgroup -g 1000 zot && \
 COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Create basic config
+# Create config with UI and search enabled
 RUN echo '{ \
   "distSpecVersion": "1.1.1", \
   "storage": { \
@@ -65,6 +67,14 @@ RUN echo '{ \
   }, \
   "log": { \
     "level": "info" \
+  }, \
+  "extensions": { \
+    "ui": { \
+      "enable": true \
+    }, \
+    "search": { \
+      "enable": true \
+    } \
   } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
@@ -75,7 +85,7 @@ USER zot
 # Expose port
 EXPOSE 5000
 
-# Healthcheck
+# Healthcheck - API endpoint'ini kontrol et
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:5000/v2/ || exit 1
 
