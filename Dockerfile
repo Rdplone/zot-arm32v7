@@ -1,32 +1,49 @@
 # ===== Builder Stage =====
-FROM --platform=linux/amd64 golang:1.21-alpine3.18 AS builder
+FROM golang:1.21-alpine3.18 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates build-base
 
-# Set environment
-ENV CGO_ENABLED=0
-ENV GO111MODULE=on
-ENV GOPROXY=https://proxy.golang.org,direct
+# Set environment with multiple proxy options
+ENV CGO_ENABLED=0 \
+    GO111MODULE=on \
+    GOPROXY="https://proxy.golang.org,https://goproxy.cn,direct" \
+    GOSUMDB="sum.golang.org" \
+    GOPRIVATE=""
 
 WORKDIR /src
 
-# Clone a known stable version
+# Use an even older, more stable version to avoid dependency conflicts
 RUN git clone --depth 1 --branch v2.1.7 https://github.com/project-zot/zot.git .
 
-# Download dependencies
-RUN go mod tidy && go mod download
+# Debug: Show go environment
+RUN go env
+
+# Debug: Show what we're working with
+RUN ls -la && head -20 go.mod
+
+# Try to fix any module issues first
+RUN go mod tidy -v
+
+# Debug: Check mod status
+RUN go list -m all | head -10
+
+# Download dependencies with verbose output
+RUN go mod download -x
+
+# Verify dependencies
+RUN go mod verify
 
 # Build for ARM32v7 with minimal features
 RUN GOOS=linux GOARCH=arm GOARM=7 \
-    go build -ldflags '-w -s' \
+    go build -v -ldflags '-w -s' \
     -o zot ./cmd/zot
 
 # Verify build succeeded
 RUN ls -la zot
 
 # ===== Runtime Stage =====
-FROM --platform=linux/arm/v7 alpine:3.18
+FROM alpine:3.18
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates curl
