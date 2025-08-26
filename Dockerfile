@@ -6,28 +6,52 @@ LABEL version="1.0"
 
 # Install build dependencies
 RUN apk update && apk add --no-cache \
-    bash git wget tar build-base make ca-certificates curl jq
+    bash git wget tar build-base make ca-certificates curl jq \
+    && rm -rf /var/cache/apk/*
 
-# Verify Go version and cross-compilation support
+# Set Go environment variables for better dependency resolution
+ENV GO111MODULE=on \
+    GOPROXY=https://proxy.golang.org,direct \
+    GOSUMDB=sum.golang.org \
+    GOPRIVATE="" \
+    CGO_ENABLED=0
+
+# Verify Go version
 RUN go version
 
-# Get latest stable release version from GitHub API
 WORKDIR /build
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/project-zot/zot/releases/latest | jq -r '.tag_name') && \
-    echo "Building Zot version: $LATEST_VERSION" && \
-    git clone --depth 1 --branch $LATEST_VERSION https://github.com/project-zot/zot.git .
 
-# Alternative: Manual version specification for more control
-# ARG ZOT_VERSION=v2.1.7
-# RUN git clone --depth 1 --branch ${ZOT_VERSION} https://github.com/project-zot/zot.git .
+# Use a specific stable version instead of latest to avoid dependency issues
+ARG ZOT_VERSION=v2.1.7
+RUN echo "Building Zot version: $ZOT_VERSION" && \
+    git clone --depth 1 --branch ${ZOT_VERSION} https://github.com/project-zot/zot.git .
 
-# Download dependencies
-RUN GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go mod download
+# Alternative: Get latest version (uncomment if you want latest)
+# RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/project-zot/zot/releases/latest | jq -r '.tag_name') && \
+#     echo "Building Zot version: $LATEST_VERSION" && \
+#     git clone --depth 1 --branch $LATEST_VERSION https://github.com/project-zot/zot.git .
 
-# Build with full features including UI and search for ARM32v7
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
-    go build -ldflags '-w -s -extldflags "-static"' \
-    -tags 'containers_image_openpgp ui search' \
+# Clean go mod cache and download dependencies with retries
+RUN go clean -modcache || true
+
+# Download dependencies with better error handling
+RUN set -e && \
+    echo "Downloading Go modules..." && \
+    timeout 600 go mod download -x || \
+    (echo "First attempt failed, cleaning and retrying..." && \
+     go clean -modcache && \
+     timeout 600 go mod download -x) || \
+    (echo "Second attempt failed, trying with different proxy..." && \
+     GOPROXY=https://goproxy.cn,direct timeout 600 go mod download -x)
+
+# Verify dependencies
+RUN go mod verify
+
+# Build with full features for ARM32v7
+RUN echo "Building zot binary for ARM32v7..." && \
+    GOOS=linux GOARCH=arm GOARM=7 \
+    go build -v -ldflags '-w -s -extldflags "-static"' \
+    -tags 'containers_image_openpgp' \
     -o zot ./cmd/zot
 
 # Verify the binary was built correctly
@@ -38,7 +62,7 @@ FROM --platform=linux/arm/v7 alpine:3.18
 
 # Install runtime dependencies
 RUN apk update && apk add --no-cache \
-    ca-certificates tzdata curl && \
+    ca-certificates tzdata curl file && \
     rm -rf /var/cache/apk/*
 
 # Create zot user and directories
@@ -51,48 +75,28 @@ RUN addgroup -g 1000 zot && \
 COPY --from=builder /build/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
-# Verify the binary works on ARM
-RUN /usr/local/bin/zot --help > /dev/null 2>&1 || echo "Binary verification failed"
+# Verify the binary architecture
+RUN file /usr/local/bin/zot
 
-# Create config with UI and search enabled
+# Test the binary works
+RUN /usr/local/bin/zot --help > /dev/null 2>&1
+
+# Create basic config (without UI/search for stability)
 RUN echo '{ \
-  "distSpecVersion": "1.1.1", \
+  "distSpecVersion": "1.1.0-dev", \
   "storage": { \
     "rootDirectory": "/var/lib/zot", \
-    "dedupe": true, \
+    "dedupe": false, \
     "gc": true, \
     "gcDelay": "1h", \
     "gcInterval": "24h" \
   }, \
   "http": { \
     "address": "0.0.0.0", \
-    "port": "5000", \
-    "realm": "zot", \
-    "tls": { \
-      "cert": "", \
-      "key": "" \
-    } \
+    "port": "5000" \
   }, \
   "log": { \
-    "level": "info", \
-    "output": "/tmp/zot.log" \
-  }, \
-  "extensions": { \
-    "ui": { \
-      "enable": true \
-    }, \
-    "search": { \
-      "enable": true, \
-      "cve": { \
-        "updateInterval": "2h" \
-      } \
-    }, \
-    "metrics": { \
-      "enable": false, \
-      "prometheus": { \
-        "path": "/metrics" \
-      } \
-    } \
+    "level": "info" \
   } \
 }' > /etc/zot/config.json && \
 chown zot:zot /etc/zot/config.json
@@ -104,7 +108,7 @@ USER zot
 EXPOSE 5000
 
 # Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:5000/v2/ || exit 1
 
 # Set working directory
