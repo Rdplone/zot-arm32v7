@@ -1,22 +1,31 @@
 # ===== Builder Stage =====
-# Using the official Zot Go builder image, which includes all necessary tools
 FROM --platform=linux/arm/v7 golang:1.21-alpine AS builder
 LABEL maintainer="your-email@example.com"
 LABEL description="Zot Registry for ARM32v7/Raspberry Pi 2 with full features"
 LABEL version="1.0"
+
+# Install build dependencies
+RUN apk update && apk add --no-cache \
+    bash git wget tar build-base make ca-certificates nodejs npm
 
 # Clone Zot repository
 WORKDIR /go/src/github.com/project-zot/zot
 RUN git clone https://github.com/project-zot/zot.git . && \
     git checkout v2.1.7
 
-# Build everything using make
-RUN make clean binary
+# Build UI assets
+WORKDIR /go/src/github.com/project-zot/zot/web
+RUN npm install && npm run build
 
-# ---
-# Stage 2: Final image with nothing but certs, binary, and default config file
-# ---
-FROM --platform=linux/arm/v7 alpine:3.18 AS final
+# Go build (UI and Search enabled)
+WORKDIR /go/src/github.com/project-zot/zot
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
+    go build -ldflags '-w -s' \
+    -tags 'containers_image_openpgp ui search' \
+    -o zot ./cmd/zot
+
+# ===== Runtime Stage =====
+FROM --platform=linux/arm/v7 alpine:3.18
 
 # Install runtime dependencies
 RUN apk update && apk add --no-cache \
@@ -30,7 +39,7 @@ RUN addgroup -g 1000 zot && \
     chown -R zot:zot /etc/zot /var/lib/zot
 
 # Copy built binary from builder
-COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-linux-arm /usr/local/bin/zot
+COPY --from=builder /go/src/github.com/project-zot/zot/zot /usr/local/bin/zot
 RUN chmod +x /usr/local/bin/zot
 
 # Create config WITH UI AND SEARCH ENABLED
